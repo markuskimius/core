@@ -1,2 +1,3 @@
-# core-sh
-Essential bash utilities
+# core
+
+Essential unix utilities.

@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+
+##############################################################################
+# CORE: Essential unix utilities
+# https://github.com/markuskimius/core
+#
+# Copyright (c)2020-2024 Mark Kim
+# Released under GNU General Public License version 2.
+# https://github.com/markuskimius/core/blob/main/LICENSE
+##############################################################################
+
+function usage() {
+    cat <<EOF
+hop onto a host using a short mnemonic.  The list of hosts are specified in
+\$DPM/*/etc/hop-hosts.csv.
+
+Usage: ${SCRIPTNAME} [-u] [-s] [-l] NAME
+
+  NAME                  Mnemonic of the host to hop onto.
+  -u,--user             Username associated with NAME
+  -s,--server           Server associated with NAME
+  -l,--login            Login associated with NAME, typically USERNAME@SERVER.
+
+EOF
+}
+
+
+##############################################################################
+# PROGRAM BEGINS HERE
+
+source "getopt.sh" || exit 1
+source "core-cfg.sh" || exit 1
+
+
+SCRIPTNAME=$(basename -- "$BASH_SOURCE")
+PARAMS=( name method username hostname options command )
+WIDTHS=( -12 -30 -30 1 )
+ACTION=()
+
+
+function main() {
+    local OPTOPT OPTARG
+    local errcount=0
+    local name
+
+    # Process options
+    while getopt-sh "husl" "help,user,server,login" "$@"; do
+        case "$OPTOPT" in
+            -h|--help)     usage && exit 0          ;;
+            -u|--user)     ACTION+=( user )         ;;
+            -s|--server)   ACTION+=( server )       ;;
+            -l|--login)    ACTION+=( login )        ;;
+            *)             errcount=$((errcount+1)) ;;
+        esac
+    done
+
+    # Sanity check
+    if (( errcount )); then
+        echo "Type '${SCRIPTNAME} -h' for help." 1>&2
+        exit 1
+    fi
+
+    # Default argument
+    if (( ! ${#OPTARG[@]} )); then
+        OPTARG=( "*" )
+    fi
+
+    for name in "${OPTARG[@]}"; do
+        hop "${name}"
+    done
+}
+
+
+function hop() {
+    local name=$1
+    local args=()
+
+    # Get host list
+    while IFS= read -r line; do
+        args+=( "$line" )
+    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-hosts.csv "${PARAMS[@]}")
+
+    # Action
+    case $(( ${#args[@]} / ${#PARAMS[@]} )) in
+        1)  action "${args[@]}" ;;
+        0)  printf "%s\n" "No such mnemonic -- $name" 1>&2 && return 1 ;;
+        *)  list-matching "$name" "${args[@]}" && return 2 ;;
+    esac
+}
+
+
+function list-matching() {
+    local name=$1 && shift
+    local matches=( "$@" )
+    local pc=${#PARAMS[@]}
+
+    ACTION=( list )
+
+    while (( ${#matches[@]} )); do
+        action "${matches[@]::${pc}}"
+
+        matches=( "${matches[@]:${pc}}" )
+    done
+}
+
+
+function action() {
+    local name=$1
+    local method=$2
+    local username=$3
+    local hostname=$4
+    local options=$5
+    local command=$6
+    local login=$hostname
+    local output=()
+    local what
+
+    if [[ -n "$username" ]]; then
+        login="${username}@${hostname}"
+    fi
+
+    for what in "${ACTION[@]}"; do
+        case "$what" in
+            user)   output+=( "$username" )         ;;
+            server) output+=( "$hostname" )         ;;
+            login)  output+=( "$login" )            ;;
+            list)   output+=( "$(                 \
+                        printf '%*s %*s %*s %*s'  \
+                        ${WIDTHS[0]} "${name}"    \
+                        ${WIDTHS[1]} "${login}"   \
+                        ${WIDTHS[2]} "${options}" \
+                        ${WIDTHS[3]} "${command}" \
+                    )" ) ;;
+            *)      echo "We shouldn't get here -- $what" 1>&2 && die ;;
+        esac
+    done
+
+    if (( ${#output[@]} )); then
+        printf "%s\n" "${output[*]}"
+    else
+        action-hop "$@" "$login"
+    fi
+}
+
+
+function action-hop() {
+    local name=$1
+    local method=$2
+    local username=$3
+    local hostname=$4
+    local options=$5
+    local command
+    local login=$7
+
+    # Quote the command
+    if [[ -n "$6" ]]; then
+        command=( "$6" )
+    fi
+
+    case "$method" in
+        ssh)  ssh $options "${login}" "${command[@]}"               ;;
+        *)    echo "Unknown login method -- $method" 1>&2 && exit 1 ;;
+    esac
+}
+
+
+##############################################################################
+# ENTRY POINT
+
+main "$@"
+
+
+# vim:ft=bash

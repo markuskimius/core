@@ -1,0 +1,48 @@
+##############################################################################
+# CORE: Essential unix utilities
+# https://github.com/markuskimius/core
+#
+# Copyright (c)2020-2024 Mark Kim
+# Released under GNU General Public License version 2.
+# https://github.com/markuskimius/core/blob/main/LICENSE
+##############################################################################
+
+[[ -n "$POSIXLY_CORRECT" ]] && echo "cannot use core in posix mode" 1>&2 && exit 1
+
+
+##############################################################################
+# DEFAULTS
+
+export CORK=${HOME}/work
+
+__CORE_CONFIGS=(
+    ~/.corerc
+    /usr/local/etc/corerc
+    /usr/etc/corerc
+    /etc/corerc
+)
+
+
+##############################################################################
+# INTERACTIVE ONLY
+
+if [[ "$-" == *i* ]]; then
+    alias vim &>/dev/null     || alias vim='vim -u "${DPM}/core/etc/vimrc"'
+    alias view &>/dev/null    || alias view='vim -Ru "${DPM}/core/etc/vimrc"'
+    alias vimdiff &>/dev/null || alias vimdiff='vim -du "${DPM}/core/etc/vimrc"'
+    alias gvim &>/dev/null    || alias gvim='gvim -u "${DPM}/core/etc/vimrc"'
+fi
+
+
+##############################################################################
+# USER/SYSTEM OVERRIDES
+
+for __core_file in "${CORE_CONFIGS[@]}"; do
+    if [[ -e "$__core_file" ]]; then
+        source "$__core_file"
+        break
+    fi
+done
+
+unset __core_file
+unset __CORE_CONFIGS
