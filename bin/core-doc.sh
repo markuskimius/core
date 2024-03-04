@@ -23,6 +23,8 @@ function core-doc() {
     # Process the files
     for filename in "${filelist[@]}"; do
         if [[ -r "$filename" ]]; then
+            local line
+
             (
                 eval "
                     while IFS= read -r line; do

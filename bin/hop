@@ -74,6 +74,7 @@ function main() {
 function hop() {
     local name=$1
     local args=()
+    local line
 
     # Get host list
     while IFS= read -r line; do
