@@ -9,6 +9,8 @@
 # https://github.com/markuskimius/core/blob/main/LICENSE
 ##############################################################################
 
+declare -F core-cfg >/dev/null && return
+
 source "core-doc.sh" || exit 1
 
 

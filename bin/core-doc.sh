@@ -9,6 +9,9 @@
 # https://github.com/markuskimius/core/blob/main/LICENSE
 ##############################################################################
 
+declare -F core-doc >/dev/null && return
+
+
 function core-doc() {
     local -a filelist=( ${DPM}/*/etc/${1} )
     local filename
