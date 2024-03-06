@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+
+##############################################################################
+# CORE: Essential unix utilities
+# https://github.com/markuskimius/core
+#
+# Copyright (c)2020-2024 Mark Kim
+# Released under GNU General Public License version 2.
+# https://github.com/markuskimius/core/blob/main/LICENSE
+##############################################################################
+
+function usage() {
+    cat <<EOF
+Control jobs.
+
+Usage: ${SCRIPTNAME} COMMAND [JOBNAME]
+
+COMMAND:
+  list                  List the job.
+  start                 Start the job.
+  crontab               Show the crontab entry for the job.
+
+The jobs may be configured by editing a file the matches the pattern
+"${DPM}/*/etc/core-job.csv".  The file processed via core-doc.sh.
+
+EOF
+}
+
+
+##############################################################################
+# PROGRAM BEGINS HERE
+
+source "getopt.sh" || exit 1
+source "core-cfg.sh" || exit 1
+
+SCRIPTNAME=$(basename -- "$BASH_SOURCE")
+
+
+function main() {
+    local OPTOPT OPTARG
+    local cmd
+    local arg
+
+    # Process options
+    while getopt-sh "h" "help" "$@"; do
+        case "$OPTOPT" in
+            -h|--help)  usage && exit 0 ;;
+            *)          exitcode=1      ;;
+        esac
+    done
+    cmd=${OPTARG[0]}
+    OPTARG=( "${OPTARG[@]:1}" )
+
+    # Sanity check
+    if [[ -z "$cmd" ]]; then
+        printf "COMMAND required\n\n" 1>&2
+        exitcode=1
+    fi
+
+    if (( exitcode )); then
+        usage 1>&2
+        exit $exitcode
+    fi
+
+    # Execute command
+    for arg in "${OPTARG[@]-*}"; do
+        case "$cmd" in
+            list)    job-list "$arg" ;;
+            start)   job-start "$arg" ;;
+            crontab) job-crontab  "$arg" ;;
+            *)       printf "%s: Invalid command\n" "${cmd}" && exit 1;;
+        esac
+    done
+}
+
+
+function job-list() {
+    local -a params=( name cmdline start )
+    local -a jobs=()
+    local format="%-20s %-20s %s"
+    local name=${1-*}
+    local line
+    local i
+
+    # Validate
+    [[ -z "$name" ]] && return 1;
+
+    # Get all matching jobs
+    while IFS= read -r line; do
+        jobs+=( "$line" )
+    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
+
+    # Output
+    printf "${format}\n" NAME START COMMAND
+
+    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
+        local -a job=( "${jobs[@]:i:${#params[@]}}" )
+
+        printf "${format}\n" "${job[0]}" "${job[2]}" "${job[1]}"
+    done
+}
+
+
+function job-start() {
+    local -a params=( name cmdline )
+    local -a jobs=()
+    local name=${1-*}
+    local line
+    local i
+
+    # Validate
+    [[ -z "$name" ]] && return 1;
+
+    # Get all matching jobs
+    while IFS= read -r line; do
+        jobs+=( "$line" )
+    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
+
+    # Output
+    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
+        local -a job=( "${jobs[@]:i:${#params[@]}}" )
+
+        printf "Starting %s ...\n" "${job[0]}"
+        ( ${job[1]} )
+    done
+}
+
+
+function job-crontab() {
+    local -a params=( name cmdline start )
+    local -a jobs=()
+    local name=${1-*}
+    local line
+    local i
+
+    # Validate
+    [[ -z "$name" ]] && return 1;
+
+    # Get all matching jobs
+    while IFS= read -r line; do
+        jobs+=( "$line" )
+    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
+
+    # Output
+    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
+        local -a job=( "${jobs[@]:i:${#params[@]}}" )
+
+        printf "%-20s %s %s\n" "${job[2]}" "${DPM}/core/core-run" "${job[1]}"
+    done
+}
+
+
+##############################################################################
+# ENTRY POINT
+
+main "$@"
+
+
+# vim:ft=bash
