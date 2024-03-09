@@ -17,7 +17,9 @@ Usage: ${SCRIPTNAME} COMMAND [JOBNAME]
 
 COMMAND:
   list                  List the job.
+  stop                  Stop the job.
   start                 Start the job.
+  restart               Restar the job.
   crontab               Show the crontab entry for the job.
 
 The jobs may be configured by editing a file the matches the pattern
@@ -33,7 +35,13 @@ EOF
 source "getopt.sh" || exit 1
 source "core-cfg.sh" || exit 1
 
+SCRIPTPATH=$BASH_SOURCE
 SCRIPTNAME=$(basename -- "$BASH_SOURCE")
+CORK=${CORK-${HOME}/work}
+TORK=${CORK}/token
+LORK=${CORK}/log
+
+declare -A PROCS=()
 
 
 function main() {
@@ -65,39 +73,22 @@ function main() {
     # Execute command
     for arg in "${OPTARG[@]-*}"; do
         case "$cmd" in
-            list)    job-list "$arg" ;;
-            start)   job-start "$arg" ;;
-            crontab) job-crontab  "$arg" ;;
+            list)    job-list    "$arg" ;;
+            stop)    job-stop    "$arg" ;;
+            start)   job-start   "$arg" ;;
+            restart) job-restart "$arg" ;;
+            crontab) job-crontab "$arg" ;;
             *)       printf "%s: Invalid command\n" "${cmd}" && exit 1;;
         esac
     done
 }
 
 
-function job-list() {
-    local -a params=( name cmdline start )
-    local -a jobs=()
-    local format="%-20s %-20s %s"
+function job-stop() {
     local name=${1-*}
     local line
-    local i
 
-    # Validate
-    [[ -z "$name" ]] && return 1;
-
-    # Get all matching jobs
-    while IFS= read -r line; do
-        jobs+=( "$line" )
-    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
-
-    # Output
-    printf "${format}\n" NAME START COMMAND
-
-    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
-        local -a job=( "${jobs[@]:i:${#params[@]}}" )
-
-        printf "${format}\n" "${job[0]}" "${job[2]}" "${job[1]}"
-    done
+    cache-pids
 }
 
 
@@ -116,18 +107,81 @@ function job-start() {
         jobs+=( "$line" )
     done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
 
+    cache-pids
+
     # Output
     for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
         local -a job=( "${jobs[@]:i:${#params[@]}}" )
+        local jobname=${job[0]}
+        local jobcmd=${job[1]}
+        local pids=$(get-pids "${jobcmd}")
 
-        printf "Starting %s ...\n" "${job[0]}"
-        ( ${job[1]} )
+        if [[ -n "$pids" ]]; then
+            printf "%s already running as pid(s) %s\n" "$jobname" "$pids"
+        else
+            local tok="${TORK}/${jobname}.token"
+            local log="${LORK}/${jobname}_$(date "+%Y%m%d_%H:%M:%S").log"
+
+            printf "Starting %s ...\n" "${jobname}"
+            (
+                touch "$tok" \
+                && eval "${jobcmd}" \
+                && rm -f "$tok"
+            ) 2>&1 | tee "$log"
+        fi
+    done
+}
+
+
+function job-restart() {
+    job-stop "$@" && job-start "$@" 
+}
+
+
+function job-list() {
+    local -a params=( name cmdline start stop )
+    local -a jobs=()
+    local format="%-15s %-15s %-15s %-15s %s"
+    local name=${1-*}
+    local line
+    local i
+
+    # Validate
+    [[ -z "$name" ]] && return 1;
+
+    # Get all matching jobs
+    while IFS= read -r line; do
+        jobs+=( "$line" )
+    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
+
+    # Output
+    printf "${format}\n" NAME START STOP STATUS COMMAND
+
+    cache-pids
+
+    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
+        local -a job=( "${jobs[@]:i:${#params[@]}}" )
+        local jobname=${job[0]}
+        local jobcmd=${job[1]}
+        local pids=$(get-pids "${jobcmd}")
+        local tok="${TORK}/${jobname}.token"
+        local status
+
+        if [[ -n "$pids" ]]; then
+            status="${pids}"
+        elif [[ -f "$tok" ]]; then
+            status="ERROR"
+        else
+            status="OK"
+        fi
+
+        printf "${format}\n" "$jobname" "${job[2]}" "${job[3]}" "$status" "$jobcmd"
     done
 }
 
 
 function job-crontab() {
-    local -a params=( name cmdline start )
+    local -a params=( name cmdline start stop )
     local -a jobs=()
     local name=${1-*}
     local line
@@ -145,8 +199,34 @@ function job-crontab() {
     for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
         local -a job=( "${jobs[@]:i:${#params[@]}}" )
 
-        printf "%-20s %s %s\n" "${job[2]}" "${DPM}/core/core-run" "${job[1]}"
+        [[ -n "${job[2]}" ]] && printf "%-20s %q %q %q %q\n" "${job[2]}" "$(which bash)" "${SCRIPTNAME}" start "${job[0]}"
+        [[ -n "${job[3]}" ]] && printf "%-20s %q %q %q %q\n" "${job[3]}" "$(which bash)" "${SCRIPTNAME}" stop "${job[0]}"
     done
+}
+
+
+function get-pids() {
+    printf "%s\n" "${PROCS[${1}]:1}"
+}
+
+
+function cache-pids() {
+    if (( ${#PROCS[@]} == 0 )); then
+        local -a pids=()
+        local line
+        local pid
+        local cmd
+
+        shopt -s extglob
+
+        while IFS= read -r line; do
+            line=${line##+( )}
+            pid=${line%% *}
+            cmd=${line#* }
+
+            PROCS[${cmd}]+=" $pid"
+        done < <("$(command -v procps || command -v ps)" ax -o pid,command)
+    fi
 }
 
 
