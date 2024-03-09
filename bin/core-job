@@ -85,10 +85,48 @@ function main() {
 
 
 function job-stop() {
+    local -a params=( name cmdline )
+    local -a jobs=()
     local name=${1-*}
     local line
+    local i
+
+    # Validate
+    [[ -z "$name" ]] && return 1;
+
+    # Get all matching jobs
+    while IFS= read -r line; do
+        jobs+=( "$line" )
+    done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
+
+    # Sanity check
+    if (( ${#jobs[@]} == 0 )); then
+        printf "%s: No such job\n" "$name" 1>&2
+        return 1
+    fi
 
     cache-pids
+
+    # Kill running jobs
+    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
+        local -a job=( "${jobs[@]:i:${#params[@]}}" )
+        local jobname=${job[0]}
+        local jobcmd=${job[1]}
+        local pids=( $(get-pids "${jobcmd}") )
+
+        if (( ${#pids[@]} )); then
+            local pid
+
+            printf "Stopping %s (%s)...\n" "${jobname}" "${pids[*]}"
+            for pid in "${pids[@]}"; do
+                kill "$pid"
+            done
+        else
+            printf "%s is not running\n" "${jobname}"
+        fi
+    done
+
+    return 0
 }
 
 
@@ -106,6 +144,12 @@ function job-start() {
     while IFS= read -r line; do
         jobs+=( "$line" )
     done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
+
+    # Sanity check
+    if (( ${#jobs[@]} == 0 )); then
+        printf "%s: No such job\n" "$name" 1>&2
+        return 1
+    fi
 
     cache-pids
 
@@ -130,11 +174,13 @@ function job-start() {
             ) 2>&1 | tee "$log"
         fi
     done
+
+    return 0
 }
 
 
 function job-restart() {
-    job-stop "$@" && job-start "$@" 
+    job-stop "$@" && PROCS=() && job-start "$@"
 }
 
 
