@@ -123,7 +123,7 @@ function is-expired() {
 function is-open() {
     local filename=$1
 
-    $(command -v fuser || echo lsof) "$filename" &>/dev/null
+    $(command -v lsof || echo fuser) "$filename" &>/dev/null
 }
 
 
