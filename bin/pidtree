@@ -169,26 +169,11 @@ function memoize_ps() {
         PS[$pid|cols]=${PS[$pid|cols]#* }
         PS[$pid|cols]+=${PS[$pid|command]%% *}
         PS[$pid|command]=${PS[$pid|command]#* }
-    done < <(ps-sh axww -o $(printf "%s," "${COLS[@]}")command)
+    done < <($(command -v procps || echo ps) axww -o $(printf "%s," "${COLS[@]}")command)
 
     # Ensure pid 1 exists
     if [[ " ${PS[pids]} " != *" 1 "* ]]; then
         PS[pids]+=" 1"
-    fi
-}
-
-
-function ps-sh() {
-    #
-    # ps on cygwin is incompatible with our package, but the procps package
-    # provides a compatible alternative.  Use procps if available, otherwise
-    # use ps.
-    #
-
-    if command -v procps >/dev/null; then
-        procps "$@"
-    else
-        ps "$@"
     fi
 }
 

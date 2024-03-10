@@ -271,7 +271,7 @@ function cache-pids() {
             cmd=${line#* }
 
             PROCS[${cmd}]+=" $pid"
-        done < <("$(command -v procps || command -v ps)" ax -o pid,command)
+        done < <("$(command -v procps || echo ps)" ax -o pid,command)
     fi
 }
 
