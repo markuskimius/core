@@ -166,11 +166,13 @@ function job-start() {
             local tok="${TORK}/${jobname}.token"
             local log="${LORK}/${jobname}_$(date "+%Y%m%d_%H:%M:%S").log"
 
-            printf "Starting %s ...\n" "${jobname}"
             (
+                printf "Start %s at %s\n\n" "${jobname}" "$(date "+%Y-%m-%d %H:%M:%S.%N %z")"
+
                 touch "$tok" \
                 && eval "${jobcmd}" \
-                && rm -f "$tok"
+                && rm -f "$tok" \
+                && printf "Finish %s at %s\n" "${jobname}" "$(date "+%Y-%m-%d %H:%M:%S.%N %z")"
             ) 2>&1 | tee "$log"
         fi
     done
