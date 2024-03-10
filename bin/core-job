@@ -169,9 +169,11 @@ function job-start() {
             (
                 printf "Start %s at %s\n\n" "${jobname}" "$(date "+%Y-%m-%d %H:%M:%S.%N %z")"
 
-                touch "$tok" \
+                mkdir -p "$TORK"    \
+                && mkdir -p "$LORK" \
+                && touch "$tok"     \
                 && eval "${jobcmd}" \
-                && rm -f "$tok" \
+                && rm -f "$tok"     \
                 && printf "Finish %s at %s\n" "${jobname}" "$(date "+%Y-%m-%d %H:%M:%S.%N %z")"
             ) 2>&1 | tee "$log"
         fi
