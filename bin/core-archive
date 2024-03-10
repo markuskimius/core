@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+##############################################################################
+# CORE: Essential unix utilities
+# https://github.com/markuskimius/core
+#
+# Copyright (c)2020-2024 Mark Kim
+# Released under GNU General Public License version 2.
+# https://github.com/markuskimius/core/blob/main/LICENSE
+##############################################################################
+
+function usage() {
+    cat <<EOF
+Archive files.
+
+Usage: ${SCRIPTNAME} CONFIG.csv
+
+EOF
+}
+
+
+##############################################################################
+# PROGRAM BEGINS HERE
+
+source "getopt.sh" || exit 1
+source "core-cfg.sh" || exit 1
+
+SCRIPTNAME=$(basename -- "$BASH_SOURCE")
+CORK=${CORK-${HOME}/work}
+BASHRC=${CORK}/.bashrc
+NOW=$(date +%s)
+
+
+function main() {
+    local OPTOPT OPTARG
+    local file
+
+    # Process options
+    while getopt-sh "h" "help" "$@"; do
+        case "$OPTOPT" in
+            -h|--help)  usage && exit 0 ;;
+            *)          exitcode=1      ;;
+        esac
+    done
+
+    # Sanity check
+    if (( ! ${#OPTARG[@]} )); then
+        printf "CONFIG.csv required\n\n" 1>&2
+        exitcode=1
+    fi
+
+    if (( exitcode )); then
+        usage 1>&2
+        exit $exitcode
+    fi
+
+    # Archive
+    for file in "${OPTARG[@]}"; do
+        archive-by-cfg "$file"
+    done
+}
+
+
+function archive-by-cfg() {
+    local -a params=( name pattern keepdays )
+    local -a jobs=()
+    local file=$1
+    local line
+    local i
+
+    while IFS= read -r line; do
+        jobs+=( "$line" )
+    done < <(core-cfg -d $'\n' "$file" "${params[@]}")
+
+    for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
+        local -a job=( "${jobs[@]:i:${#params[@]}}" )
+        local name=${job[0]}
+        local pattern=${job[1]}
+        local keepdays=${job[2]}
+
+        archive-set "$name" "$pattern" "$keepdays"
+    done
+}
+
+
+function archive-set() {
+    local name=$1
+    local pattern=$2
+    local keepdays=$3
+    local file
+
+    printf "Archiving %s ...\n" "$name"
+
+    for file in $pattern; do
+        printf "%s ... " "$file"
+
+        if   ! [[ -f "$file" ]]; then
+            printf "[ERROR] - no such file\n"
+        elif ! is-expired "$file" "$keepdays"; then
+            printf "[KEEP]\n"
+        elif is-open "$file"; then
+            printf "[KEEP] - open\n"
+        else
+            printf "[DELETE]\n"
+            rm -f "$file"
+        fi
+    done
+
+    printf "\n"
+}
+
+
+function is-expired() {
+    local filename=$1
+    local keepdays=$2
+    local keepsecs=$(( keepdays * 24 * 60 * 60 ))
+    local mtime=$(stat -c %Y "$filename")
+
+    (( NOW - mtime > keepsecs ))
+}
+
+
+function is-open() {
+    local filename=$1
+
+    $(command -v fuser || echo lsof) "$filename" &>/dev/null
+}
+
+
+##############################################################################
+# ENTRY POINT
+
+main "$@"
+
+
+# vim:ft=bash

@@ -1,0 +1,2 @@
+name,cmdline,start,stop
+ARCHIVE,core-archive core-archive.csv,05 00 * * *,
