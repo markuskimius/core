@@ -191,7 +191,7 @@ function job-restart() {
 function job-list() {
     local -a params=( name cmdline start stop )
     local -a jobs=()
-    local format="%-15s %-15s %-15s %-15s %s"
+    local format="%-20s %-15s %-15s %-15s %s"
     local name=${1-*}
     local line
     local i
