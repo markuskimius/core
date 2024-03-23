@@ -19,6 +19,7 @@ COMMAND:
   list                  List the job.
   stop                  Stop the job.
   start                 Start the job.
+  status                Alias for "list"
   restart               Restar the job.
   crontab               Show the crontab entry for the job.
 
@@ -37,11 +38,12 @@ source "core-cfg.sh" || exit 1
 
 SCRIPTPATH=$BASH_SOURCE
 SCRIPTNAME=$(basename -- "$BASH_SOURCE")
+DFMT="%Y-%m-%d %H:%M:%S.%N %z"
 CORK=${CORK-${HOME}/work}
 TORK=${CORK}/token
 LORK=${CORK}/log
 
-declare -A PROCS=()
+declare -A PIDS=()
 
 
 function main() {
@@ -76,6 +78,7 @@ function main() {
             list)    job-list    "$arg" ;;
             stop)    job-stop    "$arg" ;;
             start)   job-start   "$arg" ;;
+            status)  job-list    "$arg" ;;
             restart) job-restart "$arg" ;;
             crontab) job-crontab "$arg" ;;
             *)       printf "%s: Invalid command\n" "${cmd}" && exit 1;;
@@ -111,16 +114,11 @@ function job-stop() {
     for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
         local -a job=( "${jobs[@]:i:${#params[@]}}" )
         local jobname=${job[0]}
-        local jobcmd=${job[1]}
-        local pids=( $(get-pids "${jobcmd}") )
+        local pid=$(get-pid "$jobname")
 
-        if (( ${#pids[@]} )); then
-            local pid
-
-            printf "Stopping %s (%s)...\n" "${jobname}" "${pids[*]}"
-            for pid in "${pids[@]}"; do
-                kill "$pid"
-            done
+        if [[ -n "$pid" ]]; then
+            printf "Stopping %s (%s)...\n" "${jobname}" "$pid"
+            kill "$pid"
         else
             printf "%s is not running\n" "${jobname}"
         fi
@@ -158,23 +156,41 @@ function job-start() {
         local -a job=( "${jobs[@]:i:${#params[@]}}" )
         local jobname=${job[0]}
         local jobcmd=${job[1]}
-        local pids=$(get-pids "${jobcmd}")
+        local pid=$(get-pid "$jobname")
 
-        if [[ -n "$pids" ]]; then
-            printf "%s already running as pid(s) %s\n" "$jobname" "$pids"
+        if [[ -n "$pid" ]]; then
+            printf "%s already running as pid %s\n" "$jobname" "$pid"
         else
-            local tok="${TORK}/${jobname}.token"
             local log="${LORK}/${jobname}_$(date "+%Y%m%d_%H:%M:%S").log"
+            local tok="${TORK}/${jobname}.token"
+            local start="$(date "+$DFMT")"
 
             (
-                printf "Start %s at %s\n\n" "${jobname}" "$(date "+%Y-%m-%d %H:%M:%S.%N %z")"
+                printf "Start %s at %s\n" "${jobname}" "$start"
+                printf "Log   %s\n"   "$log"
+                printf "Token %s\n\n" "$tok"
 
-                mkdir -p "$TORK"    \
-                && mkdir -p "$LORK" \
-                && touch "$tok"     \
-                && eval "${jobcmd}" \
-                && rm -f "$tok"     \
-                && printf "Finish %s at %s\n" "${jobname}" "$(date "+%Y-%m-%d %H:%M:%S.%N %z")"
+                if ! mkdir -p "$TORK"; then
+                    printf "Unable to create %s\n" "$TORK"
+                    exit 1
+                fi
+
+                if ! mkdir -p "$LORK"; then
+                    printf "Unable to create %s\n" "$LORK"
+                    exit 1
+                fi
+
+                printf "START,%s\n" "$start" > "$tok"
+
+                ${jobcmd} &
+                pid=$!
+
+                printf "PID,%s\n" "$pid" >> "$tok"
+                wait "$pid"
+                printf "EXIT,%s\n" $? >> "$tok"
+                printf "FINISH,%s\n" "$(date "+$DFMT")" >> "$tok"
+
+                printf "\nFinish %s at %s\n" "${jobname}" "$(date "+$DFMT")"
             ) 2>&1 | tee "$log"
         fi
     done
@@ -184,14 +200,14 @@ function job-start() {
 
 
 function job-restart() {
-    job-stop "$@" && PROCS=() && job-start "$@"
+    job-stop "$@" && PIDS=() && job-start "$@"
 }
 
 
 function job-list() {
     local -a params=( name cmdline start stop )
     local -a jobs=()
-    local format="%-20s %-15s %-15s %-15s %s"
+    local format="%-20s %-15s %-15s %-37s %-18s %s"
     local name=${1-*}
     local line
     local i
@@ -205,7 +221,7 @@ function job-list() {
     done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
 
     # Output
-    printf "${format}\n" NAME START STOP STATUS COMMAND
+    printf "${format}\n" NAME START STOP LAST STATUS COMMAND
 
     cache-pids
 
@@ -213,19 +229,46 @@ function job-list() {
         local -a job=( "${jobs[@]:i:${#params[@]}}" )
         local jobname=${job[0]}
         local jobcmd=${job[1]}
-        local pids=$(get-pids "${jobcmd}")
         local tok="${TORK}/${jobname}.token"
-        local status
+        local status="-"
+        local last="-"
 
-        if [[ -n "$pids" ]]; then
-            status="${pids}"
-        elif [[ -f "$tok" ]]; then
-            status="ERROR"
-        else
-            status="OK"
+        if [[ -f "$tok" ]]; then
+            local pid
+            local exit
+            local start
+            local finish
+
+            while IFS= read -r line; do
+                local name="${line%%,*}"
+                local value="${line#*,}"
+
+                case "$name" in
+                    PID)    pid=$value    ;;
+                    EXIT)   exit=$value   ;;
+                    START)  start=$value  ;;
+                    FINISH) finish=$value ;;
+                esac
+            done < "$tok"
+
+            if   [[ -n "$start" && -n "$finish" ]] && (( exit == 0 )); then
+                last=$finish
+            elif [[ -n "$start" && -z "$finish" ]]; then
+                last=$start
+            fi
+
+            if [[ "$exit" == 0 ]]; then
+                status="OK"
+            elif [[ -n "$exit" ]]; then
+                status="ERROR:$exit"
+            elif [[ -n "${PIDS[$pid]}" ]]; then
+                status="RUNNING:$pid"
+            else
+                status="KILLED"
+            fi
         fi
 
-        printf "${format}\n" "$jobname" "${job[2]}" "${job[3]}" "$status" "$jobcmd"
+        printf "${format}\n" "$jobname" "${job[2]}" "${job[3]}" "$last" "$status" "$jobcmd"
     done
 }
 
@@ -255,13 +298,30 @@ function job-crontab() {
 }
 
 
-function get-pids() {
-    printf "%s\n" "${PROCS[${1}]:1}"
+function get-pid() {
+    local jobname=$1
+    local tok="${TORK}/${jobname}.token"
+    local pid
+    local finish
+
+    while IFS= read -r line; do
+        local name="${line%%,*}"
+        local value="${line#*,}"
+
+        case "$name" in
+            PID)    pid=$value    ;;
+            FINISH) finish=$value ;;
+        esac
+    done < "$tok"
+
+    if [[ -z "${finish}" ]] && [[ -n "${PIDS[$pid]}" ]]; then
+        printf "%s\n" "$pid"
+    fi
 }
 
 
 function cache-pids() {
-    if (( ${#PROCS[@]} == 0 )); then
+    if (( ${#PIDS[@]} == 0 )); then
         local -a pids=()
         local line
         local pid
@@ -274,7 +334,7 @@ function cache-pids() {
             pid=${line%% *}
             cmd=${line#* }
 
-            PROCS[${cmd}]+=" $pid"
+            PIDS[${pid}]+=$cmd
         done < <("$(command -v procps || echo ps)" ax -o pid,command)
     fi
 }
