@@ -207,7 +207,7 @@ function job-restart() {
 function job-list() {
     local -a params=( name cmdline start stop )
     local -a jobs=()
-    local format="%-20s %-15s %-15s %-37s %-18s %s"
+    local format="%-20s %-15s %-20s %-18s %s"
     local name=${1-*}
     local line
     local i
@@ -221,7 +221,7 @@ function job-list() {
     done < <(core-cfg -d $'\n' -f '"${rec[name]}" == $name' core-job.csv "${params[@]}")
 
     # Output
-    printf "${format}\n" NAME START STOP LAST STATUS COMMAND
+    printf "${format}\n" NAME START LAST STATUS COMMAND
 
     cache-pids
 
@@ -244,10 +244,10 @@ function job-list() {
                 local value="${line#*,}"
 
                 case "$name" in
-                    PID)    pid=$value    ;;
-                    EXIT)   exit=$value   ;;
-                    START)  start=$value  ;;
-                    FINISH) finish=$value ;;
+                    PID)    pid=$value         ;;
+                    EXIT)   exit=$value        ;;
+                    START)  start=${value%.*}  ;;
+                    FINISH) finish=${value%.*} ;;
                 esac
             done < "$tok"
 
@@ -268,7 +268,7 @@ function job-list() {
             fi
         fi
 
-        printf "${format}\n" "$jobname" "${job[2]}" "${job[3]}" "$last" "$status" "$jobcmd"
+        printf "${format}\n" "$jobname" "${job[2]}" "$last" "$status" "$jobcmd"
     done
 }
 
