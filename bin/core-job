@@ -181,6 +181,7 @@ function job-start() {
                 fi
 
                 printf "START,%s\n" "$start" > "$tok"
+                printf "LOG,%s\n" "$log" >> "$tok"
 
                 ${jobcmd} &
                 pid=$!
