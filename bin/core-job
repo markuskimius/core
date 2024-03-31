@@ -161,7 +161,9 @@ function job-start() {
         if [[ -n "$pid" ]]; then
             printf "%s already running as pid %s\n" "$jobname" "$pid"
         else
-            local log="${LORK}/${jobname}_$(date "+%Y%m%d_%H:%M:%S").log"
+            local logpfx="${LORK}/${jobname}_$(date "+%Y%m%d_%H:%M:%S.")"
+            local logsfx=".log"
+            local log="${logpfx}000${logsfx}"
             local tok="${TORK}/${jobname}.token"
             local start="$(date "+$DFMT")"
 
@@ -181,7 +183,7 @@ function job-start() {
                 fi
 
                 printf "START,%s\n" "$start" > "$tok"
-                printf "LOG,%s\n" "$log" >> "$tok"
+                printf "LOG,%s\n" "${log}" >> "$tok"
 
                 ${jobcmd} &
                 pid=$!
@@ -192,7 +194,7 @@ function job-start() {
                 printf "FINISH,%s\n" "$(date "+$DFMT")" >> "$tok"
 
                 printf "\nFinish %s at %s\n" "${jobname}" "$(date "+$DFMT")"
-            ) 2>&1 | tee "$log"
+            ) 2>&1 | tee >(while ! split -da3 -l1000000 - "$logpfx" "--additional-suffix=${logsfx}"; do :; done)
         fi
     done
 

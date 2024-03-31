@@ -91,6 +91,7 @@ function archive-set() {
 
     printf "Archiving %s ...\n" "$name"
 
+    shopt -s extglob
     for file in $pattern; do
         printf "%s ... " "$file"
 
