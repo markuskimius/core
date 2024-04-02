@@ -254,9 +254,9 @@ function job-list() {
                 esac
             done < "$tok"
 
-            if   [[ -n "$start" && -n "$finish" ]] && (( exit == 0 )); then
+            if   [[ -n "$finish" ]]; then
                 last=$finish
-            elif [[ -n "$start" && -z "$finish" ]]; then
+            elif [[ -n "$start" ]]; then
                 last=$start
             fi
 
@@ -264,7 +264,7 @@ function job-list() {
                 status="OK"
             elif [[ -n "$exit" ]]; then
                 status="ERROR:$exit"
-            elif [[ -n "${PIDS[$pid]}" ]]; then
+            elif [[ -n "$pid" && -n "${PIDS[$pid]}" ]]; then
                 status="RUNNING:$pid"
             else
                 status="KILLED"
@@ -317,7 +317,7 @@ function get-pid() {
         esac
     done < "$tok"
 
-    if [[ -z "${finish}" ]] && [[ -n "${PIDS[$pid]}" ]]; then
+    if [[ -z "${finish}" ]] && [[ -n "$pid" && -n "${PIDS[$pid]}" ]]; then
         printf "%s\n" "$pid"
     fi
 }
