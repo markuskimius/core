@@ -237,10 +237,10 @@ function job-list() {
         local last="-"
 
         if [[ -f "$tok" ]]; then
-            local pid
-            local exit
-            local start
-            local finish
+            local pid=""
+            local exit=""
+            local start=""
+            local finish=""
 
             while IFS= read -r line; do
                 local name="${line%%,*}"
