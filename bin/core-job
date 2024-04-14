@@ -304,18 +304,20 @@ function job-crontab() {
 function get-pid() {
     local jobname=$1
     local tok="${TORK}/${jobname}.token"
-    local pid
+    local pid=""
     local finish
 
-    while IFS= read -r line; do
-        local name="${line%%,*}"
-        local value="${line#*,}"
+    if [[ -r "$tok" ]]; then
+        while IFS= read -r line; do
+            local name="${line%%,*}"
+            local value="${line#*,}"
 
-        case "$name" in
-            PID)    pid=$value    ;;
-            FINISH) finish=$value ;;
-        esac
-    done < "$tok"
+            case "$name" in
+                PID)    pid=$value    ;;
+                FINISH) finish=$value ;;
+            esac
+        done < "$tok"
+    fi
 
     if [[ -z "${finish}" ]] && [[ -n "$pid" && -n "${PIDS[$pid]}" ]]; then
         printf "%s\n" "$pid"
