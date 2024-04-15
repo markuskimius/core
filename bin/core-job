@@ -167,6 +167,9 @@ function job-start() {
             local tok="${TORK}/${jobname}.token"
             local start="$(date "+$DFMT")"
 
+            # Kill process group upon exit
+            trap 'kill 0' EXIT
+
             (
                 printf "Start %s at %s\n" "${jobname}" "$start"
                 printf "Log   %s\n"   "$log"
