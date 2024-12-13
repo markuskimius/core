@@ -13,7 +13,10 @@ function usage() {
     cat <<EOF
 Control jobs.
 
-Usage: ${SCRIPTNAME} COMMAND [JOBNAME]
+Usage: ${SCRIPTNAME} [OPTIONS] COMMAND [JOBNAME]
+
+OPTIONS
+  -a,--async            Run asynchronously.
 
 COMMAND:
   list                  List the job.
@@ -42,6 +45,7 @@ DFMT="%Y-%m-%d %H:%M:%S.%N %z"
 CORK=${CORK-${HOME}/work}
 TORK=${CORK}/token
 LORK=${CORK}/log
+ASYNC=0
 
 declare -A PIDS=()
 
@@ -52,9 +56,10 @@ function main() {
     local arg
 
     # Process options
-    while getopt-sh "h" "help" "$@"; do
+    while getopt-sh "ha" "help,async" "$@"; do
         case "$OPTOPT" in
             -h|--help)  usage && exit 0 ;;
+            -a|--async) ASYNC=1         ;;
             *)          exitcode=1      ;;
         esac
     done
@@ -72,8 +77,17 @@ function main() {
         exit $exitcode
     fi
 
+    # Defaults
+    if [[ ${#OPTARG[@]} == 0 ]]; then
+        case "$cmd" in
+            list)    OPTARG=( "*" ) ;;
+            status)  OPTARG=( "*" ) ;;
+            crontab) OPTARG=( "*" ) ;;
+        esac
+    fi
+
     # Execute command
-    for arg in "${OPTARG[@]-*}"; do
+    for arg in "${OPTARG[@]}"; do
         case "$cmd" in
             list)    job-list    "$arg" ;;
             stop)    job-stop    "$arg" ;;
@@ -203,7 +217,13 @@ function job-start() {
                 printf "\nFinish %s at %s\n" "${jobname}" "$(date "+$DFMT")"
             ) &> >(trap 'kill 0' EXIT; while ! split -da3 -l1000000 - "$logpfx" "--additional-suffix=${logsfx}"; do :; done) &
 
-            disown
+            pid=$!
+
+            if (( ASYNC )); then
+                disown
+            else
+                wait "$pid"
+            fi
         fi
     done
 
