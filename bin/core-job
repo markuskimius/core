@@ -185,6 +185,9 @@ function job-start() {
             printf "Log   %s\n"   "$log"
             printf "Token %s\n\n" "$tok"
 
+            # Don't this process when children issue 'kill 0'
+            trap '' TERM
+
             (
                 printf "Start %s at %s\n" "${jobname}" "$start"
                 printf "Log   %s\n"   "$log"
@@ -216,7 +219,6 @@ function job-start() {
 
                 printf "\nFinish %s at %s\n" "${jobname}" "$(date "+$DFMT")"
             ) &> >(trap 'kill 0' EXIT; while ! split -da3 -l1000000 - "$logpfx" "--additional-suffix=${logsfx}"; do :; done) &
-
             pid=$!
 
             if (( ASYNC )); then
