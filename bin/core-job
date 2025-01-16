@@ -331,7 +331,7 @@ function job-list() {
 
 
 function job-crontab() {
-    local -a params=( name cmdline start stop )
+    local -a params=( name cmdline start stop waitfor )
     local -a jobs=()
     local name=${1-*}
     local line
@@ -348,9 +348,14 @@ function job-crontab() {
     # Output
     for((i=0; i<${#jobs[@]}; i+=${#params[@]})); do
         local -a job=( "${jobs[@]:i:${#params[@]}}" )
+        local -a jobspec=( "${job[0]}" )
 
-        [[ -n "${job[2]}" ]] && printf "%-20s %q %q %q %q\n" "${job[2]}" "$(which bash)" "${SCRIPTNAME}" start "${job[0]}"
-        [[ -n "${job[3]}" ]] && printf "%-20s %q %q %q %q\n" "${job[3]}" "$(which bash)" "${SCRIPTNAME}" stop "${job[0]}"
+        if [[ -n "${job[4]}" ]]; then
+            jobspec+=( -w "${job[4]}" )
+        fi
+
+        [[ -n "${job[2]}" ]] && printf "%-20s %q %q %q %s\n" "${job[2]}" "$(which bash)" "${SCRIPTNAME}" start "${jobspec[*]}"
+        [[ -n "${job[3]}" ]] && printf "%-20s %q %q %q %s\n" "${job[3]}" "$(which bash)" "${SCRIPTNAME}" stop "${jobspec[*]}"
     done
 }
 

@@ -1,2 +1,2 @@
-name,cmdline,start,stop
-ARCHIVE,core-archive core-archive.csv,05 00 * * *,
+name,cmdline,start,stop,waitfor
+ARCHIVE,core-archive core-archive.csv,05 00 * * *,,
