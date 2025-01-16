@@ -17,6 +17,7 @@ Usage: ${SCRIPTNAME} [OPTIONS] COMMAND [JOBNAME]
 
 OPTIONS
   -a,--async            Run asynchronously.
+  -w,--waitfor JOB      Run after JOB completes.
 
 COMMAND:
   list                  List the job.
@@ -46,6 +47,7 @@ CORK=${CORK-${HOME}/work}
 TORK=${CORK}/token
 LORK=${CORK}/log
 ASYNC=0
+WAITFOR=()
 
 declare -A PIDS=()
 
@@ -56,11 +58,12 @@ function main() {
     local arg
 
     # Process options
-    while getopt-sh "ha" "help,async" "$@"; do
+    while getopt-sh "haw:" "help,async,waitfor:" "$@"; do
         case "$OPTOPT" in
-            -h|--help)  usage && exit 0 ;;
-            -a|--async) ASYNC=1         ;;
-            *)          exitcode=1      ;;
+            -h|--help)    usage && exit 0        ;;
+            -a|--async)   ASYNC=1                ;;
+            -w|--waitfor) WAITFOR+=( "$OPTARG" ) ;;
+            *)            exitcode=1             ;;
         esac
     done
     cmd=${OPTARG[0]}
@@ -185,7 +188,7 @@ function job-start() {
             printf "Log   %s\n"   "$log"
             printf "Token %s\n\n" "$tok"
 
-            # Don't this process when children issue 'kill 0'
+            # Don't kill this process when children issue 'kill 0'
             trap '' TERM
 
             (
@@ -208,6 +211,26 @@ function job-start() {
 
                 # Kill process group upon exit
                 trap 'kill 0' EXIT
+
+                # Wait for dependent jobs to finish
+                while (( ${#WAITFOR[@]} )); do
+                    local nwait=0
+                    local job
+
+                    for job in "${WAITFOR[@]}"; do
+                        local pid=$(get-pid "$job")
+
+                        if [[ -n "$pid" ]]; then
+                            nwait=$((nwait + 1))
+
+                            printf "Wait for %s (%s) ...\n" "$job" "$pid"
+                        fi
+                    done
+
+                    (( nwait == 0 )) && break
+                    printf "\n"
+                    sleep 5
+                done
 
                 ${jobcmd} &
                 pid=$!
